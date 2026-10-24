@@ -124,6 +124,7 @@ const byTopic=Object.fromEntries(topicNames.map(t=>[t,Object.fromEntries(['easy'
 const expectedAnswers=q=>q.correctValues||[q.correct];
 const sameSet=(a,b)=>a.length===b.length&&a.every(v=>b.includes(v));
 const mastery=Object.fromEntries(topicNames.map(t=>[t,0]));
+const easyCorrectStreak=Object.fromEntries(topicNames.map(t=>[t,0]));
 const seen=Object.fromEntries(topicNames.map(t=>[t,{easy:new Set(),medium:new Set(),hard:new Set()}]));
 let topicBag=[],previousTopic=null,current=null,choices=[],answered=false,previousId=null,selectedValue=null,selectedValues=[];
 const progressKey='hfsmath7.practice.progress.v1';
@@ -133,14 +134,14 @@ let restoredSolutionOpen=null;
 function storageStatus(failed){$('storage-status').hidden=!failed;$('storage-status').textContent=failed?'לא ניתן לשמור התקדמות בדפדפן הזה.':'';}
 function saveProgress(){
  if(!current)return;
- const state={schema:1,bankSignature,mastery,seen:Object.fromEntries(topicNames.map(t=>[t,Object.fromEntries(['easy','medium','hard'].map(l=>[l,[...seen[t][l]]]))])),topicBag,previousTopic,previousId,currentId:current.id,currentCorrect:current.correct,currentCorrectValues:expectedAnswers(current),choiceValues:choices.map(o=>o.value),answered,selectedValue,selectedValues,solutionOpen:answered&&$('solution').open,stats,updatedAt:new Date().toISOString()};
+ const state={schema:1,bankSignature,mastery,easyCorrectStreak,seen:Object.fromEntries(topicNames.map(t=>[t,Object.fromEntries(['easy','medium','hard'].map(l=>[l,[...seen[t][l]]]))])),topicBag,previousTopic,previousId,currentId:current.id,currentCorrect:current.correct,currentCorrectValues:expectedAnswers(current),choiceValues:choices.map(o=>o.value),answered,selectedValue,selectedValues,solutionOpen:answered&&$('solution').open,stats,updatedAt:new Date().toISOString()};
  try{window.localStorage.setItem(progressKey,JSON.stringify(state));storageStatus(false);}catch{storageStatus(true);}
 }
 function restoreProgress(){
  try{
   const raw=window.localStorage.getItem(progressKey);if(!raw)return false;const data=JSON.parse(raw);if(!data||data.schema!==1)return false;
   const count=v=>Number.isSafeInteger(v)&&v>=0?v:0;
-  for(const t of topicNames){const score=data.mastery?.[t];if(Number.isFinite(score))mastery[t]=Math.min(6,Math.max(0,score));const old=data.stats?.topics?.[t];stats.topics[t].answered=count(old?.answered);stats.topics[t].correct=Math.min(stats.topics[t].answered,count(old?.correct));}
+  for(const t of topicNames){const score=data.mastery?.[t];if(Number.isFinite(score))mastery[t]=Math.min(6,Math.max(0,score));easyCorrectStreak[t]=Math.min(2,count(data.easyCorrectStreak?.[t]));const old=data.stats?.topics?.[t];stats.topics[t].answered=count(old?.answered);stats.topics[t].correct=Math.min(stats.topics[t].answered,count(old?.correct));}
   stats.answered=Object.values(stats.topics).reduce((n,v)=>n+v.answered,0);stats.correct=Object.values(stats.topics).reduce((n,v)=>n+v.correct,0);
   const bankChanged=(data.bankSignature!==bankSignature&&!["4b6e4fd2"].includes(data.bankSignature));
   const q=bank.find(q=>q.id===data.currentId),values=data.choiceValues;
@@ -152,15 +153,13 @@ function restoreProgress(){
   return true;
  }catch{return false;}
 }
-function levelWeights(score){
- if(score<=0)return [1,0,0];
- if(score<2)return [.78,.22,0];
- if(score<3)return [.60,.34,.06];
- if(score<4)return [.43,.43,.14];
- if(score<5)return [.28,.48,.24];
- return [.16,.44,.40];
+function levelWeights(score,easyStreak=0){
+ const weights=score<=0?[1,0,0]:score<2?[.78,.22,0]:score<3?[.60,.34,.06]:score<4?[.43,.43,.14]:score<5?[.28,.48,.24]:[.16,.44,.40];
+ // A topic's streak survives questions from other topics; favour medium after two easy successes.
+ if(easyStreak>=2){const shift=weights[0]/2;weights[0]-=shift;weights[1]+=shift;}
+ return weights;
 }
-function pickLevel(topic){const w=levelWeights(mastery[topic]),r=Math.random();return r<w[0]?'easy':r<w[0]+w[1]?'medium':'hard';}
+function pickLevel(topic){const w=levelWeights(mastery[topic],easyCorrectStreak[topic]),r=Math.random();return r<w[0]?'easy':r<w[0]+w[1]?'medium':'hard';}
 function chooseQuestion(){
  if(!topicBag.length){topicBag=shuffle(topicNames);if(topicBag.at(-1)===previousTopic)[topicBag[0],topicBag[topicBag.length-1]]=[topicBag.at(-1),topicBag[0]];}
  const topic=topicBag.pop(),level=pickLevel(topic),pool=byTopic[topic][level],used=seen[topic][level];
@@ -196,6 +195,7 @@ function showFeedback(){
 function gradeSelection(){
  if(answered||!selectedValues.length)return;answered=true;const ok=sameSet(selectedValues,expectedAnswers(current));
  mastery[current.topic]=Math.max(0,Math.min(6,mastery[current.topic]+(ok?1:-1.5)));
+ easyCorrectStreak[current.topic]=ok&&current.level==='easy'?Math.min(2,easyCorrectStreak[current.topic]+1):0;
  stats.answered++;stats.correct+=ok?1:0;stats.topics[current.topic].answered++;stats.topics[current.topic].correct+=ok?1:0;
  showFeedback();saveProgress();
 }
