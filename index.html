@@ -11,6 +11,8 @@ main{position:relative;width:min(100%,380px);display:grid;gap:12px}
 nav{display:grid;gap:12px}
 .mascot{position:absolute;bottom:calc(100% + 20px);left:50%;transform:translateX(-50%);width:172px;padding:0;border:0;border-radius:14px;background:transparent;cursor:pointer;touch-action:manipulation;transition:filter .15s}
 .mascot img{display:block;width:100%;height:auto}
+.confetti{position:fixed;inset:0;z-index:100;overflow:hidden;pointer-events:none}
+.confetti-piece{position:absolute;display:block;opacity:0;will-change:transform,opacity}
 .mascot:hover{filter:drop-shadow(0 3px 3px #182d4915)}
 .mascot:active{opacity:.7}
 .mascot:focus-visible{outline:3px solid #225bd5;outline-offset:5px}
@@ -35,14 +37,61 @@ a:focus-visible{outline:3px solid #225bd5;outline-offset:4px}
 <a href="infinite-practice.html">תרגול אינסופי</a>
 </nav>
 </main>
+<div id="confetti" class="confetti" aria-hidden="true"></div>
 <audio id="cat-sound" src="assets/cat-wow.mp3" preload="auto"></audio>
 <script>
 const catSound=document.getElementById('cat-sound');
+const catImage=document.querySelector('.mascot img');
+const confetti=document.getElementById('confetti');
+const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
+let catJump=null,confettiAnimations=[];
+function clearConfetti(){
+  confettiAnimations.forEach(animation=>animation.cancel());
+  confettiAnimations=[];
+  confetti.replaceChildren();
+}
+function celebrate(){
+  if(catJump)catJump.cancel();
+  catJump=catImage.animate(reducedMotion.matches?[
+    {opacity:1},{opacity:.65},{opacity:1}
+  ]:[
+    {transform:'translateY(0) scale(1)',offset:0},
+    {transform:'translateY(-20px) scale(1.03)',offset:.35},
+    {transform:'translateY(0) scale(1.03,.96)',offset:.7},
+    {transform:'translateY(-4px) scale(1)',offset:.85},
+    {transform:'translateY(0) scale(1)',offset:1}
+  ],{duration:reducedMotion.matches?220:520,easing:'ease-out'});
+  clearConfetti();
+  const colors=['#4779df','#f2b844','#ed7790','#53bca5','#987de1','#f19355'];
+  const count=Math.min(180,Math.max(90,Math.round(window.innerWidth/7)));
+  for(let i=0;i<count;i++){
+    const piece=document.createElement('i');
+    piece.className='confetti-piece';
+    const size=5+Math.random()*5;
+    piece.style.cssText=`left:${Math.random()*100}%;top:${reducedMotion.matches?Math.random()*100+'%':'-18px'};width:${size}px;height:${size*(.6+Math.random()*.7)}px;border-radius:${i%4===0?'50%':'1px'};background:${colors[i%colors.length]}`;
+    confetti.append(piece);
+    const drift=(Math.random()-.5)*220;
+    const rotation=Math.random()*720-360;
+    const frames=reducedMotion.matches?[
+      {opacity:0},{opacity:.9,offset:.25},{opacity:0}
+    ]:[
+      {transform:`translate3d(0,0,0) rotate(${rotation}deg)`,opacity:0},
+      {opacity:1,offset:.08},
+      {opacity:1,offset:.8},
+      {transform:`translate3d(${drift}px,${window.innerHeight+60}px,0) rotate(${rotation+540}deg)`,opacity:0}
+    ];
+    const animation=piece.animate(frames,{duration:reducedMotion.matches?900:2300+Math.random()*1300,delay:Math.random()*400,easing:'linear',fill:'both'});
+    confettiAnimations.push(animation);
+    animation.finished.then(()=>piece.remove()).catch(()=>{});
+  }
+}
 document.getElementById('cat-button').addEventListener('click',()=>{
   catSound.pause();
   catSound.currentTime=0;
   catSound.play().catch(()=>{});
+  celebrate();
 });
+document.addEventListener('visibilitychange',()=>{if(document.hidden)clearConfetti();});
 </script>
 </body>
 </html>
